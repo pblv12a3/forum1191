@@ -5,10 +5,10 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebas
 
 // Paste your Firebase web app config here:
 const firebaseConfig = {
-  apiKey: "PASTE",
-  authDomain: "PASTE",
-  projectId: "PASTE",
-  appId: "PASTE",
+  apiKey: "AIzaSyDBtwH0T67TNWxYGHe0NtFo-FhdrfTDuEw",
+  authDomain: "gitforum12.firebaseapp.com",
+  projectId: "gitforum12",
+  appId: "1:12183523056:web:4a6b9fb9713fc9af22bc35",
 };
 
 export const app = initializeApp(firebaseConfig);
