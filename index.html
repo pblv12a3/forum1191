@@ -58,19 +58,43 @@
 
 <!-- 🔥 GUARANTEED LOADER -->
 <script type="module">
-  // visible marker so you KNOW this file is live
+  // Visible badge so you know this HTML is live
   document.body.insertAdjacentHTML(
     "beforeend",
-    '<div style="position:fixed;bottom:8px;right:8px;background:black;color:#0f0;padding:6px;font:12px monospace;z-index:9999">index.html v1</div>'
+    '<div style="position:fixed;bottom:8px;right:8px;background:black;color:#0f0;padding:6px;font:12px monospace;z-index:9999">index.html LIVE</div>'
   );
 
-  // crash → uhoh.html
-  window.addEventListener("error", () => location.href = "uhoh.html");
-  window.addEventListener("unhandledrejection", () => location.href = "uhoh.html");
+  function shouldCrashRedirect(reason) {
+    const msg = String(reason?.code || reason?.message || reason || "");
 
-  // load app
-  import "./app_v2.js?v=FINAL";
+    // Ignore browser extensions noise
+    if (msg.includes("chrome-extension://")) return false;
+
+    // Ignore expected Firebase auth errors (we show these in UI now)
+    if (msg.includes("auth/unauthorized-domain")) return false;
+    if (msg.includes("auth/operation-not-allowed")) return false;
+    if (msg.includes("auth/invalid-email")) return false;
+    if (msg.includes("auth/wrong-password")) return false;
+    if (msg.includes("auth/user-not-found")) return false;
+    if (msg.includes("auth/email-already-in-use")) return false;
+    if (msg.includes("auth/weak-password")) return false;
+
+    return true;
+  }
+
+  window.addEventListener("error", (e) => {
+    if (!shouldCrashRedirect(e?.error || e?.message)) return;
+    location.href = "uhoh.html";
+  });
+
+  window.addEventListener("unhandledrejection", (e) => {
+    if (!shouldCrashRedirect(e?.reason)) return;
+    location.href = "uhoh.html";
+  });
+
+  import "./app_v2.js?v=2";
 </script>
+
 
 </body>
 </html>
