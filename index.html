@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GitHub Pages Forum</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Forum</div>
+    <div class="authbar">
+      <span id="userLabel" class="muted"></span>
+      <button id="btnLogout" class="btn secondary hidden">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- AUTH -->
+    <section id="authCard" class="card">
+      <h2>Sign in</h2>
+      <p class="muted">Email/password login. Your posts, likes, and replies persist.</p>
+
+      <div class="grid2">
+        <div>
+          <label>Email</label>
+          <input id="email" type="email" placeholder="you@email.com" autocomplete="email" />
+        </div>
+        <div>
+          <label>Password</label>
+          <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btnLogin" class="btn">Login</button>
+        <button id="btnRegister" class="btn secondary">Register</button>
+      </div>
+
+      <div id="authMsg" class="msg"></div>
+    </section>
+
+    <!-- COMPOSER -->
+    <section id="composerCard" class="card hidden">
+      <h2>Create a post</h2>
+
+      <label>Title</label>
+      <input id="postTitle" type="text" maxlength="120" placeholder="Short title" />
+
+      <label>Body</label>
+      <textarea id="postBody" rows="4" maxlength="5000" placeholder="Write something..."></textarea>
+
+      <div class="grid2">
+        <div>
+          <label>Attach image (optional)</label>
+          <input id="imageFile" type="file" accept="image/*" />
+        </div>
+        <div>
+          <label>Attach video (optional)</label>
+          <input id="videoFile" type="file" accept="video/*" />
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btnPublish" class="btn">Publish</button>
+        <span id="publishMsg" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- FEED -->
+    <section id="feed" class="stack hidden">
+      <div class="row space">
+        <h2 class="noMargin">Latest posts</h2>
+        <button id="btnRefresh" class="btn secondary">Refresh</button>
+      </div>
+
+      <div id="posts" class="stack"></div>
+    </section>
+  </main>
+
+  <!-- Reply modal -->
+  <dialog id="replyDialog" class="dialog">
+    <form method="dialog" class="card">
+      <h3 class="noMargin">Reply</h3>
+      <p id="replyToTitle" class="muted"></p>
+
+      <label>Your reply</label>
+      <textarea id="replyText" rows="4" maxlength="2000" placeholder="Type your reply..."></textarea>
+
+      <div class="row">
+        <button id="btnSendReply" class="btn" value="default">Send</button>
+        <button class="btn secondary" value="cancel">Cancel</button>
+      </div>
+
+      <div id="replyMsg" class="msg"></div>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
