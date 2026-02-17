@@ -1,4 +1,4 @@
-import { auth, db, storage } from "./firebase.js";
+import { auth, db } from "./firebase.js";
 
 import {
   createUserWithEmailAndPassword,
@@ -13,20 +13,13 @@ import {
   doc,
   getDoc,
   getDocs,
-  updateDoc,
   setDoc,
+  updateDoc,
   serverTimestamp,
   query,
   orderBy,
-  limit,
-  deleteField
+  limit
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 
 // ---------- UI refs ----------
 const authCard = document.getElementById("authCard");
@@ -45,12 +38,23 @@ const authMsg = document.getElementById("authMsg");
 
 const titleEl = document.getElementById("postTitle");
 const bodyEl = document.getElementById("postBody");
-const imageEl = document.getElementById("imageFile");
-const videoEl = document.getElementById("videoFile");
 const btnPublish = document.getElementById("btnPublish");
 const publishMsg = document.getElementById("publishMsg");
 const btnRefresh = document.getElementById("btnRefresh");
 
+// URL inputs (must exist in your updated index.html)
+const imageUrlEl = document.getElementById("imageUrl");
+const videoUrlEl = document.getElementById("videoUrl");
+
+// Profile UI (must exist in your updated index.html)
+const profileCard = document.getElementById("profileCard");
+const profileUsername = document.getElementById("profileUsername");
+const profilePhotoUrl = document.getElementById("profilePhotoUrl");
+const btnSaveProfile = document.getElementById("btnSaveProfile");
+const profileMsg = document.getElementById("profileMsg");
+const profilePreview = document.getElementById("profilePreview");
+
+// Reply modal
 const replyDialog = document.getElementById("replyDialog");
 const replyToTitle = document.getElementById("replyToTitle");
 const replyText = document.getElementById("replyText");
@@ -62,8 +66,12 @@ let replyingToPostId = null;
 
 // ---------- helpers ----------
 function setMsg(el, text, kind = "muted") {
+  if (!el) return;
   el.textContent = text || "";
-  el.style.color = kind === "danger" ? "var(--danger)" : (kind === "ok" ? "var(--ok)" : "var(--muted)");
+  el.style.color =
+    kind === "danger" ? "var(--danger)" :
+    kind === "ok" ? "var(--ok)" :
+    "var(--muted)";
 }
 
 function escapeHtml(str) {
@@ -78,17 +86,68 @@ function fmtTime(ts) {
   return d.toLocaleString();
 }
 
-async function uploadIfPresent(file, folder) {
-  if (!file) return null;
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
-  const path = `${folder}/${Date.now()}_${safeName}`;
-  const r = ref(storage, path);
-  await uploadBytes(r, file);
-  return await getDownloadURL(r);
+function defaultAvatar(email) {
+  const seed = encodeURIComponent((email || "user").toLowerCase());
+  return `https://api.dicebear.com/9.x/identicon/svg?seed=${seed}`;
+}
+
+function normalizeUrl(u) {
+  const s = (u || "").trim();
+  if (!s) return null;
+  // allow https links only for safety
+  if (!/^https?:\/\//i.test(s)) return null;
+  return s;
+}
+
+function isImageUrl(url) {
+  return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(url);
+}
+
+function isMp4Url(url) {
+  return /\.(mp4|webm|ogg)(\?.*)?$/i.test(url);
+}
+
+function youtubeEmbed(url) {
+  // Basic YouTube embed support (youtu.be or youtube.com/watch?v=)
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.replace("/", "");
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    if (u.hostname.includes("youtube.com")) {
+      const id = u.searchParams.get("v");
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getMyProfile() {
+  if (!currentUser) return null;
+  const uref = doc(db, "users", currentUser.uid);
+  const snap = await getDoc(uref);
+  return snap.exists() ? snap.data() : null;
+}
+
+async function ensureProfileUI() {
+  const prof = await getMyProfile();
+  const hasProfile = !!(prof && prof.username);
+
+  if (profileCard) profileCard.classList.toggle("hidden", hasProfile);
+  if (composerCard) composerCard.classList.toggle("hidden", !hasProfile);
+
+  if (!hasProfile && profilePreview) {
+    profileUsername.value = prof?.username || "";
+    profilePhotoUrl.value = prof?.photoUrl || "";
+    profilePreview.src = profilePhotoUrl.value.trim() || defaultAvatar(currentUser?.email);
+  }
 }
 
 // ---------- auth ----------
-btnRegister.addEventListener("click", async () => {
+btnRegister?.addEventListener("click", async () => {
   setMsg(authMsg, "");
   const email = emailEl.value.trim();
   const password = passEl.value.trim();
@@ -102,7 +161,7 @@ btnRegister.addEventListener("click", async () => {
   }
 });
 
-btnLogin.addEventListener("click", async () => {
+btnLogin?.addEventListener("click", async () => {
   setMsg(authMsg, "");
   const email = emailEl.value.trim();
   const password = passEl.value.trim();
@@ -116,7 +175,7 @@ btnLogin.addEventListener("click", async () => {
   }
 });
 
-btnLogout.addEventListener("click", async () => {
+btnLogout?.addEventListener("click", async () => {
   await signOut(auth);
 });
 
@@ -129,6 +188,7 @@ onAuthStateChanged(auth, async (user) => {
     authCard.classList.remove("hidden");
     composerCard.classList.add("hidden");
     feed.classList.add("hidden");
+    if (profileCard) profileCard.classList.add("hidden");
     postsEl.innerHTML = "";
     return;
   }
@@ -136,38 +196,74 @@ onAuthStateChanged(auth, async (user) => {
   userLabel.textContent = `Signed in: ${currentUser.email}`;
   btnLogout.classList.remove("hidden");
   authCard.classList.add("hidden");
-  composerCard.classList.remove("hidden");
   feed.classList.remove("hidden");
 
+  await ensureProfileUI();
   await loadFeed();
 });
 
+// ---------- profile ----------
+profilePhotoUrl?.addEventListener("input", () => {
+  const url = normalizeUrl(profilePhotoUrl.value);
+  if (profilePreview) profilePreview.src = url || defaultAvatar(currentUser?.email);
+});
+
+btnSaveProfile?.addEventListener("click", async () => {
+  if (!currentUser) return;
+  setMsg(profileMsg, "");
+
+  const username = (profileUsername?.value || "").trim();
+  const photoUrlRaw = (profilePhotoUrl?.value || "").trim();
+  const photoUrl = normalizeUrl(photoUrlRaw);
+
+  if (!username || username.length < 3) return setMsg(profileMsg, "Username must be at least 3 characters.", "danger");
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) return setMsg(profileMsg, "Use only letters, numbers, _ . -", "danger");
+  if (photoUrlRaw && !photoUrl) return setMsg(profileMsg, "Profile picture must be a valid http/https URL.", "danger");
+
+  try {
+    const uref = doc(db, "users", currentUser.uid);
+    await setDoc(uref, {
+      username,
+      photoUrl: photoUrl || null,
+      email: currentUser.email,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    setMsg(profileMsg, "Saved!", "ok");
+    await ensureProfileUI();
+    await loadFeed();
+  } catch (e) {
+    setMsg(profileMsg, e.message || String(e), "danger");
+  }
+});
+
 // ---------- posting ----------
-btnPublish.addEventListener("click", async () => {
+btnPublish?.addEventListener("click", async () => {
   if (!currentUser) return;
   setMsg(publishMsg, "");
   btnPublish.disabled = true;
 
   try {
+    const prof = await getMyProfile();
+    if (!prof?.username) throw new Error("Set your profile (username) first.");
+
     const title = titleEl.value.trim();
     const body = bodyEl.value.trim();
     if (!title || !body) throw new Error("Title and body are required.");
 
-    const imageFile = imageEl.files?.[0] || null;
-    const videoFile = videoEl.files?.[0] || null;
+    const imageUrlRaw = imageUrlEl?.value || "";
+    const videoUrlRaw = videoUrlEl?.value || "";
 
-    // Optional: basic size guard (you can adjust)
-    if (imageFile && imageFile.size > 15 * 1024 * 1024) throw new Error("Image too large (max 15MB).");
-    if (videoFile && videoFile.size > 150 * 1024 * 1024) throw new Error("Video too large (max 150MB).");
+    const imageUrl = normalizeUrl(imageUrlRaw);
+    const videoUrl = normalizeUrl(videoUrlRaw);
 
-    setMsg(publishMsg, "Uploading media…");
+    if (imageUrlRaw.trim() && !imageUrl) throw new Error("Image URL must be a valid http/https link.");
+    if (videoUrlRaw.trim() && !videoUrl) throw new Error("Video URL must be a valid http/https link.");
 
-    const [imageUrl, videoUrl] = await Promise.all([
-      uploadIfPresent(imageFile, "uploads/images"),
-      uploadIfPresent(videoFile, "uploads/videos")
-    ]);
-
-    setMsg(publishMsg, "Saving post…");
+    // optional: nudge users to use typical formats
+    if (imageUrl && !isImageUrl(imageUrl)) {
+      // allow anyway, but it might not display
+    }
 
     await addDoc(collection(db, "posts"), {
       title,
@@ -176,6 +272,8 @@ btnPublish.addEventListener("click", async () => {
       videoUrl: videoUrl || null,
       authorUid: currentUser.uid,
       authorEmail: currentUser.email,
+      authorUsername: prof.username,
+      authorPhotoUrl: prof.photoUrl || null,
       createdAt: serverTimestamp(),
       likeCount: 0,
       dislikeCount: 0
@@ -183,8 +281,8 @@ btnPublish.addEventListener("click", async () => {
 
     titleEl.value = "";
     bodyEl.value = "";
-    imageEl.value = "";
-    videoEl.value = "";
+    if (imageUrlEl) imageUrlEl.value = "";
+    if (videoUrlEl) videoUrlEl.value = "";
 
     setMsg(publishMsg, "Posted!", "ok");
     await loadFeed();
@@ -192,14 +290,14 @@ btnPublish.addEventListener("click", async () => {
     setMsg(publishMsg, e.message || String(e), "danger");
   } finally {
     btnPublish.disabled = false;
-    setTimeout(() => setMsg(publishMsg, ""), 3000);
+    setTimeout(() => setMsg(publishMsg, ""), 2500);
   }
 });
 
-btnRefresh.addEventListener("click", loadFeed);
+btnRefresh?.addEventListener("click", loadFeed);
 
-// ---------- voting (like/dislike per user) ----------
-// We store votes at: posts/{postId}/votes/{uid} = { value: 1 | -1 }
+// ---------- voting ----------
+// posts/{postId}/votes/{uid} = { value: 1 | -1 | 0 }
 async function vote(postId, value) {
   if (!currentUser) return;
 
@@ -211,69 +309,59 @@ async function vote(postId, value) {
 
   const post = postSnap.data();
   const prev = voteSnap.exists() ? (voteSnap.data().value || 0) : 0;
-
-  // toggle logic:
-  // clicking same vote removes it
   const next = (prev === value) ? 0 : value;
 
   let likeCount = post.likeCount || 0;
   let dislikeCount = post.dislikeCount || 0;
 
-  // remove prev
   if (prev === 1) likeCount--;
   if (prev === -1) dislikeCount--;
-
-  // apply next
   if (next === 1) likeCount++;
   if (next === -1) dislikeCount++;
 
   likeCount = Math.max(0, likeCount);
   dislikeCount = Math.max(0, dislikeCount);
 
-  const writes = [];
-  writes.push(updateDoc(postRef, { likeCount, dislikeCount }));
+  await Promise.all([
+    updateDoc(postRef, { likeCount, dislikeCount }),
+    setDoc(voteRef, { value: next }, { merge: true })
+  ]);
 
-  if (next === 0) {
-    // delete vote doc
-    writes.push(setDoc(voteRef, { value: deleteField() }, { merge: true }));
-    // Firestore doesn't support true deleteField-only doc cleanup, so we instead delete the doc:
-    // But deleteDoc import would be another import; to keep simple, just write value:0:
-    writes.pop();
-    writes.push(setDoc(voteRef, { value: 0 }, { merge: true }));
-  } else {
-    writes.push(setDoc(voteRef, { value: next }, { merge: true }));
-  }
-
-  await Promise.all(writes);
   await loadFeed();
 }
 
 // ---------- replies ----------
 function openReply(postId, postTitle) {
   replyingToPostId = postId;
-  replyToTitle.textContent = `Replying to: ${postTitle}`;
-  replyText.value = "";
+  if (replyToTitle) replyToTitle.textContent = `Replying to: ${postTitle}`;
+  if (replyText) replyText.value = "";
   setMsg(replyMsg, "");
-  replyDialog.showModal();
+  replyDialog?.showModal();
 }
 
-btnSendReply.addEventListener("click", async (ev) => {
+btnSendReply?.addEventListener("click", async (ev) => {
   ev.preventDefault();
   if (!currentUser || !replyingToPostId) return;
 
-  const text = replyText.value.trim();
+  const text = (replyText?.value || "").trim();
   if (!text) return setMsg(replyMsg, "Reply text required.", "danger");
 
   try {
     btnSendReply.disabled = true;
+
+    const prof = await getMyProfile();
+    if (!prof?.username) return setMsg(replyMsg, "Set your profile first.", "danger");
+
     await addDoc(collection(db, "posts", replyingToPostId, "replies"), {
       text,
       authorUid: currentUser.uid,
       authorEmail: currentUser.email,
+      authorUsername: prof.username,
+      authorPhotoUrl: prof.photoUrl || null,
       createdAt: serverTimestamp()
     });
-    setMsg(replyMsg, "Reply posted.", "ok");
-    replyDialog.close();
+
+    replyDialog?.close();
     await loadFeed();
   } catch (e) {
     setMsg(replyMsg, e.message || String(e), "danger");
@@ -283,7 +371,7 @@ btnSendReply.addEventListener("click", async (ev) => {
 });
 
 // ---------- feed ----------
-async function loadReplies(postId, max = 5) {
+async function loadReplies(postId, max = 8) {
   const qy = query(
     collection(db, "posts", postId, "replies"),
     orderBy("createdAt", "desc"),
@@ -303,6 +391,24 @@ async function getMyVote(postId) {
   return snap.data().value || 0;
 }
 
+function renderVideo(videoUrl) {
+  if (!videoUrl) return "";
+  const yt = youtubeEmbed(videoUrl);
+  if (yt) {
+    return `<iframe
+      style="width:100%;height:420px;border-radius:14px;border:1px solid var(--border);background:#000"
+      src="${escapeHtml(yt)}"
+      title="YouTube video"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen></iframe>`;
+  }
+  if (isMp4Url(videoUrl)) {
+    return `<video controls src="${escapeHtml(videoUrl)}"></video>`;
+  }
+  // generic link fallback
+  return `<a class="muted" href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener">Open video link</a>`;
+}
+
 async function loadFeed() {
   postsEl.innerHTML = `<div class="card muted">Loading…</div>`;
 
@@ -320,21 +426,30 @@ async function loadFeed() {
   postsEl.innerHTML = "";
   for (const p of rows) {
     const myVote = await getMyVote(p.id);
-    const replies = await loadReplies(p.id, 5);
+    const replies = await loadReplies(p.id, 8);
+
+    const avatar = p.authorPhotoUrl || defaultAvatar(p.authorEmail);
+    const imageHtml = p.imageUrl
+      ? (isImageUrl(p.imageUrl)
+          ? `<img src="${escapeHtml(p.imageUrl)}" alt="image" />`
+          : `<a class="muted" href="${escapeHtml(p.imageUrl)}" target="_blank" rel="noopener">Open image link</a>`)
+      : "";
+
+    const videoHtml = renderVideo(p.videoUrl);
 
     const postDiv = document.createElement("div");
     postDiv.className = "post";
 
-    const imageHtml = p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="image" />` : "";
-    const videoHtml = p.videoUrl ? `<video controls src="${escapeHtml(p.videoUrl)}"></video>` : "";
-
     postDiv.innerHTML = `
       <h3>${escapeHtml(p.title)}</h3>
-      <div class="meta">
-        <span>by ${escapeHtml(p.authorEmail || "unknown")}</span>
+
+      <div class="meta metaUser">
+        <img class="avatar" src="${escapeHtml(avatar)}" alt="avatar" />
+        <span>by <strong>${escapeHtml(p.authorUsername || "unknown")}</strong></span>
         <span>•</span>
         <span>${fmtTime(p.createdAt)}</span>
       </div>
+
       <p>${escapeHtml(p.body).replace(/\n/g, "<br>")}</p>
 
       <div class="media">
@@ -357,7 +472,12 @@ async function loadFeed() {
       <div class="replyList">
         ${replies.length ? replies.map(r => `
           <div class="reply">
-            <div class="meta"><span>${escapeHtml(r.authorEmail || "unknown")}</span><span>•</span><span>${fmtTime(r.createdAt)}</span></div>
+            <div class="meta metaUser">
+              <img class="avatar" src="${escapeHtml(r.authorPhotoUrl || defaultAvatar(r.authorEmail))}" alt="avatar" />
+              <span><strong>${escapeHtml(r.authorUsername || "unknown")}</strong></span>
+              <span>•</span>
+              <span>${fmtTime(r.createdAt)}</span>
+            </div>
             <div>${escapeHtml(r.text).replace(/\n/g,"<br>")}</div>
           </div>
         `).join("") : `<div class="muted">No replies yet.</div>`}
@@ -371,3 +491,4 @@ async function loadFeed() {
     postsEl.appendChild(postDiv);
   }
 }
+
