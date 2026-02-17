@@ -1,108 +1,77 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GitHub Pages Forum</title>
+  <meta charset="UTF-8" />
+  <title>Forum</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Forum</div>
-    <div class="authbar">
-      <span id="userLabel" class="muted"></span>
-      <button id="btnLogout" class="btn secondary hidden">Logout</button>
-    </div>
-  </header>
 
-  <main class="container">
-    <!-- AUTH -->
-    <!-- PROFILE SETUP -->
-<section id="profileCard" class="card hidden">
-  <h2>Profile</h2>
-  <p class="muted">Choose a username and (optional) profile picture URL.</p>
-
-  <div class="grid2">
-    <div>
-      <label>Username</label>
-      <input id="profileUsername" type="text" maxlength="24" placeholder="e.g. Piotrek84" />
-    </div>
-    <div>
-      <label>Profile picture URL (optional)</label>
-      <input id="profilePhotoUrl" type="url" placeholder="https://..." />
-    </div>
+<header class="topbar">
+  <div class="brand">Forum</div>
+  <div>
+    <span id="userLabel"></span>
+    <button id="btnLogout" class="hidden">Logout</button>
   </div>
+</header>
 
-  <div class="row">
-    <button id="btnSaveProfile" class="btn">Save profile</button>
-    <span id="profileMsg" class="muted"></span>
-  </div>
+<main class="container">
 
-  <div class="row" style="margin-top:10px">
-    <img id="profilePreview" class="avatar" alt="preview" />
-    <span class="muted">Preview</span>
-  </div>
-</section>
+  <!-- AUTH -->
+  <section id="authCard">
+    <h2>Login / Register</h2>
+    <input id="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Password" />
+    <button id="btnLogin">Login</button>
+    <button id="btnRegister">Register</button>
+    <div id="authMsg"></div>
+  </section>
 
+  <!-- PROFILE -->
+  <section id="profileCard" class="hidden">
+    <h2>Create profile</h2>
+    <input id="profileUsername" placeholder="Username" />
+    <input id="profilePhotoUrl" placeholder="Avatar URL (optional)" />
+    <button id="btnSaveProfile">Save profile</button>
+    <div id="profileMsg"></div>
+  </section>
 
-    <!-- COMPOSER -->
-    <!-- COMPOSER -->
-<section id="composerCard" class="card hidden">
-  <h2>Create a post</h2>
+  <!-- POST -->
+  <section id="composerCard" class="hidden">
+    <h2>New post</h2>
+    <input id="postTitle" placeholder="Title" />
+    <textarea id="postBody" placeholder="Text"></textarea>
+    <input id="imageUrl" placeholder="Image URL (optional)" />
+    <input id="videoUrl" placeholder="Video URL (optional)" />
+    <button id="btnPublish">Publish</button>
+    <div id="publishMsg"></div>
+  </section>
 
-  <label>Title</label>
-  <input id="postTitle" type="text" maxlength="120" placeholder="Short title" />
+  <!-- FEED -->
+  <section id="feed" class="hidden">
+    <h2>Posts</h2>
+    <div id="posts"></div>
+  </section>
 
-  <label>Body</label>
-  <textarea id="postBody" rows="4" maxlength="5000" placeholder="Write something..."></textarea>
+</main>
 
-  <div class="grid2">
-    <div>
-      <label>Image URL (optional)</label>
-      <input id="imageUrl" type="url" placeholder="https://...jpg/png/webp" />
-    </div>
-    <div>
-      <label>Video URL (optional)</label>
-      <input id="videoUrl" type="url" placeholder="https://...mp4 or YouTube link" />
-    </div>
-  </div>
+<!-- 🔥 GUARANTEED LOADER -->
+<script type="module">
+  // visible marker so you KNOW this file is live
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    '<div style="position:fixed;bottom:8px;right:8px;background:black;color:#0f0;padding:6px;font:12px monospace;z-index:9999">index.html v1</div>'
+  );
 
-  <div class="row">
-    <button id="btnPublish" class="btn">Publish</button>
-    <span id="publishMsg" class="muted"></span>
-  </div>
-</section>
+  // crash → uhoh.html
+  window.addEventListener("error", () => location.href = "uhoh.html");
+  window.addEventListener("unhandledrejection", () => location.href = "uhoh.html");
 
+  // load app
+  import "./app_v2.js?v=FINAL";
+</script>
 
-    <!-- FEED -->
-    <section id="feed" class="stack hidden">
-      <div class="row space">
-        <h2 class="noMargin">Latest posts</h2>
-        <button id="btnRefresh" class="btn secondary">Refresh</button>
-      </div>
-
-      <div id="posts" class="stack"></div>
-    </section>
-  </main>
-
-  <!-- Reply modal -->
-  <dialog id="replyDialog" class="dialog">
-    <form method="dialog" class="card">
-      <h3 class="noMargin">Reply</h3>
-      <p id="replyToTitle" class="muted"></p>
-
-      <label>Your reply</label>
-      <textarea id="replyText" rows="4" maxlength="2000" placeholder="Type your reply..."></textarea>
-
-      <div class="row">
-        <button id="btnSendReply" class="btn" value="default">Send</button>
-        <button class="btn secondary" value="cancel">Cancel</button>
-      </div>
-
-      <div id="replyMsg" class="msg"></div>
-    </form>
-  </dialog>
-
-  <script type="module" src="app_v2.js?v=2"></script>
 </body>
 </html>
+
