@@ -115,3 +115,17 @@ textarea{resize:vertical}
 }
 .dialog::backdrop{background: rgba(0,0,0,0.55)}
 .dialog form{max-width:680px}
+.avatar{
+  width:40px;
+  height:40px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  object-fit:cover;
+  background:#0c1320;
+}
+.metaUser{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
