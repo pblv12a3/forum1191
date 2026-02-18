@@ -1,3 +1,5 @@
+// app_v3.js?v=5 — Homepage logic + Settings (edit username/pfp) + show username in topbar
+
 import { auth, db } from "./firebase.js";
 
 import {
@@ -19,13 +21,19 @@ const msg = (el, text) => el && (el.textContent = text || "");
 const userLabel = $("userLabel");
 const btnLogout = $("btnLogout");
 
+// cards
 const profileCard = $("profileCard");
+const composerCard = $("composerCard");
+const feed = $("feed");
+const postsEl = $("posts");
+
+// profile create (existing)
 const profileUsername = $("profileUsername");
 const profilePhotoUrl = $("profilePhotoUrl");
 const btnSaveProfile = $("btnSaveProfile");
 const profileMsg = $("profileMsg");
 
-const composerCard = $("composerCard");
+// composer
 const postTitle = $("postTitle");
 const postBody = $("postBody");
 const imageUrl = $("imageUrl");
@@ -33,14 +41,21 @@ const videoUrl = $("videoUrl");
 const btnPublish = $("btnPublish");
 const publishMsg = $("publishMsg");
 
-const feed = $("feed");
-const postsEl = $("posts");
-
+// reply dialog
 const replyDialog = $("replyDialog");
 const replyToTitle = $("replyToTitle");
 const replyText = $("replyText");
 const btnSendReply = $("btnSendReply");
 const replyMsg = $("replyMsg");
+
+// settings (NEW)
+const settingsCard = $("settingsCard");
+const btnOpenSettings = $("btnOpenSettings");
+const btnCloseSettings = $("btnCloseSettings");
+const settingsUsername = $("settingsUsername");
+const settingsPhotoUrl = $("settingsPhotoUrl");
+const btnSaveSettings = $("btnSaveSettings");
+const settingsMsg = $("settingsMsg");
 
 let replyingToPostId = null;
 
@@ -61,22 +76,34 @@ async function getMyProfile(uid) {
   return snap.exists() ? snap.data() : null;
 }
 
-btnLogout.onclick = async () => {
-  await signOut(auth);
-  location.href = "login.html";
-};
+// --- Settings open/close ---
+btnOpenSettings?.addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return;
 
-btnSaveProfile.onclick = async () => {
+  const prof = await getMyProfile(user.uid);
+  if (settingsUsername) settingsUsername.value = prof?.username || "";
+  if (settingsPhotoUrl) settingsPhotoUrl.value = prof?.photoUrl || "";
+  msg(settingsMsg, "");
+  show(settingsCard, true);
+});
+
+btnCloseSettings?.addEventListener("click", () => {
+  show(settingsCard, false);
+});
+
+// --- Save profile (create) ---
+btnSaveProfile?.addEventListener("click", async () => {
   try {
     msg(profileMsg, "");
     const user = auth.currentUser;
     if (!user) return;
 
-    const username = profileUsername.value.trim();
+    const username = (profileUsername?.value || "").trim();
     if (username.length < 3) throw new Error("Username must be at least 3 characters.");
     if (!/^[a-zA-Z0-9_.-]+$/.test(username)) throw new Error("Username can contain letters, numbers, _ . - only.");
 
-    const photoRaw = profilePhotoUrl.value.trim();
+    const photoRaw = (profilePhotoUrl?.value || "").trim();
     const photoUrl = photoRaw ? normalizeUrl(photoRaw) : null;
     if (photoRaw && !photoUrl) throw new Error("Profile photo must be a valid http/https URL.");
 
@@ -86,17 +113,52 @@ btnSaveProfile.onclick = async () => {
       updatedAt: serverTimestamp()
     }, { merge: true });
 
-    show(profileCard, false);
-    show(composerCard, true);
-    show(feed, true);
+    await refreshUIForUser(user);
     await loadPosts();
   } catch (e) {
     console.error(e);
     msg(profileMsg, e?.message || String(e));
   }
-};
+});
 
-btnPublish.onclick = async () => {
+// --- Save settings (edit username/pfp) ---
+btnSaveSettings?.addEventListener("click", async () => {
+  try {
+    msg(settingsMsg, "");
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const username = (settingsUsername?.value || "").trim();
+    if (username.length < 3) throw new Error("Username must be at least 3 characters.");
+    if (!/^[a-zA-Z0-9_.-]+$/.test(username)) throw new Error("Username can contain letters, numbers, _ . - only.");
+
+    const photoRaw = (settingsPhotoUrl?.value || "").trim();
+    const photoUrl = photoRaw ? normalizeUrl(photoRaw) : null;
+    if (photoRaw && !photoUrl) throw new Error("Profile photo must be a valid http/https URL.");
+
+    await setDoc(doc(db, "users", user.uid), {
+      username,
+      photoUrl: photoUrl || null,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    msg(settingsMsg, "Saved!");
+    await refreshUIForUser(user);
+    await loadPosts();
+  } catch (e) {
+    console.error(e);
+    msg(settingsMsg, e?.message || String(e));
+  }
+});
+
+// --- Logout ---
+btnLogout?.addEventListener("click", async () => {
+  await signOut(auth);
+  location.href = "login.html";
+});
+
+// --- Post ---
+btnPublish?.addEventListener("click", async () => {
   try {
     msg(publishMsg, "");
     const user = auth.currentUser;
@@ -105,15 +167,15 @@ btnPublish.onclick = async () => {
     const prof = await getMyProfile(user.uid);
     if (!prof?.username) throw new Error("Set your username first.");
 
-    const title = postTitle.value.trim();
-    const body = postBody.value.trim();
+    const title = (postTitle?.value || "").trim();
+    const body = (postBody?.value || "").trim();
     if (!title || !body) throw new Error("Title and text are required.");
 
     await addDoc(collection(db, "posts"), {
       title,
       body,
-      imageUrl: normalizeUrl(imageUrl.value) || null,
-      videoUrl: normalizeUrl(videoUrl.value) || null,
+      imageUrl: normalizeUrl(imageUrl?.value || "") || null,
+      videoUrl: normalizeUrl(videoUrl?.value || "") || null,
       authorUid: user.uid,
       authorUsername: prof.username,
       authorPhotoUrl: prof.photoUrl || null,
@@ -122,19 +184,20 @@ btnPublish.onclick = async () => {
       dislikeCount: 0
     });
 
-    postTitle.value = "";
-    postBody.value = "";
-    imageUrl.value = "";
-    videoUrl.value = "";
+    if (postTitle) postTitle.value = "";
+    if (postBody) postBody.value = "";
+    if (imageUrl) imageUrl.value = "";
+    if (videoUrl) videoUrl.value = "";
+
     msg(publishMsg, "Posted!");
     await loadPosts();
   } catch (e) {
     console.error(e);
     msg(publishMsg, e?.message || String(e));
   }
-};
+});
 
-// Votes: posts/{postId}/votes/{uid} = { value: 1|-1|0 }
+// --- Votes ---
 async function getMyVote(postId) {
   const user = auth.currentUser;
   if (!user) return 0;
@@ -176,6 +239,7 @@ async function vote(postId, value) {
   await loadPosts();
 }
 
+// --- Replies ---
 function openReply(postId, title) {
   replyingToPostId = postId;
   if (replyToTitle) replyToTitle.textContent = `Reply to: ${title || "Post"}`;
@@ -184,7 +248,7 @@ function openReply(postId, title) {
   replyDialog?.showModal?.();
 }
 
-btnSendReply.onclick = async () => {
+btnSendReply?.addEventListener("click", async () => {
   try {
     msg(replyMsg, "");
     const user = auth.currentUser;
@@ -193,7 +257,7 @@ btnSendReply.onclick = async () => {
     const prof = await getMyProfile(user.uid);
     if (!prof?.username) throw new Error("Set your username first.");
 
-    const text = (replyText.value || "").trim();
+    const text = (replyText?.value || "").trim();
     if (!text) throw new Error("Reply text is required.");
 
     await addDoc(collection(db, "posts", replyingToPostId, "replies"), {
@@ -210,7 +274,7 @@ btnSendReply.onclick = async () => {
     console.error(e);
     msg(replyMsg, e?.message || String(e));
   }
-};
+});
 
 async function loadReplies(postId) {
   const q = query(collection(db, "posts", postId, "replies"), orderBy("createdAt", "desc"), limit(5));
@@ -220,22 +284,21 @@ async function loadReplies(postId) {
   return out;
 }
 
+// --- Backward compatible feed load ---
 async function loadPosts() {
   postsEl.innerHTML = "";
 
-  // Backward compatible: try orderBy(createdAt) then fallback
   let docs = [];
   try {
     const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
     const snapNew = await getDocs(qNew);
     docs = snapNew.docs;
   } catch (e) {
-    console.warn("Falling back to unordered posts fetch:", e);
+    console.warn("Fallback fetch:", e);
     const snapAny = await getDocs(collection(db, "posts"));
     docs = snapAny.docs;
   }
 
-  // Client sort by createdAt desc when present
   docs.sort((a, b) => {
     const ta = a.data().createdAt?.toMillis?.() || 0;
     const tb = b.data().createdAt?.toMillis?.() || 0;
@@ -268,7 +331,8 @@ async function loadPosts() {
       <div class="pills">
         <button class="pill ${myVote === 1 ? "" : "off"}" data-like="1">👍 Like (${p.likeCount || 0})</button>
         <button class="pill ${myVote === -1 ? "" : "off"}" data-like="-1">👎 Dislike (${p.dislikeCount || 0})</button>
-        <button class="pill off" data-reply="1">💬 Reply</button>
+        <button class="pill off" data-reply="1">⚑ Settings</button>
+        <button class="pill off" data-replypost="1">💬 Reply</button>
       </div>
 
       <div class="replyBox">
@@ -287,29 +351,42 @@ async function loadPosts() {
 
     div.querySelector('[data-like="1"]').addEventListener("click", () => vote(postId, 1));
     div.querySelector('[data-like="-1"]').addEventListener("click", () => vote(postId, -1));
-    div.querySelector('[data-reply="1"]').addEventListener("click", () => openReply(postId, p.title));
+    div.querySelector('[data-replypost="1"]').addEventListener("click", () => openReply(postId, p.title));
+    // settings button opens settings panel
+    div.querySelector('[data-reply="1"]').addEventListener("click", () => btnOpenSettings?.click());
 
     postsEl.appendChild(div);
   }
 }
 
-// Require login: if not logged in, send to login page
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    location.href = "login.html";
-    return;
-  }
-
-  msg(userLabel, user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
-  show(btnLogout, true);
-
+// --- UI refresh for user (show username in topbar) ---
+async function refreshUIForUser(user) {
   const prof = await getMyProfile(user.uid);
   const hasProfile = !!(prof && prof.username);
+
+  // Display username instead of email
+  if (userLabel) userLabel.textContent = hasProfile ? prof.username : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
 
   show(profileCard, !hasProfile);
   show(composerCard, hasProfile);
   show(feed, hasProfile);
 
-  if (hasProfile) await loadPosts();
+  // settings button only if profile exists
+  if (btnOpenSettings) btnOpenSettings.classList.toggle("hidden", !hasProfile);
+}
+
+// --- Require login ---
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = "login.html";
+    return;
+  }
+  btnLogout?.classList.remove("hidden");
+  await refreshUIForUser(user);
+
+  const prof = await getMyProfile(user.uid);
+  if (prof?.username) await loadPosts();
 });
 
+// expose for internal call safety
+window.loadPosts = loadPosts;
