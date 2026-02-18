@@ -4,14 +4,17 @@
   <meta charset="UTF-8" />
   <title>ForumsR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/pblv12a3/forum1191/refs/heads/main/favcon.png">
   <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/png" href="favcon.png">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="brand">Forum</div>
-  <div>
+  <a class="brandLink" href="index.html">
+    <img class="brandLogo" src="favcon.png" alt="ForumsR">
+    <span class="brandText">ForumsR</span>
+  </a>
+  <div class="topRight">
     <span id="userLabel"></span>
     <button id="btnLogout" class="hidden">Logout</button>
   </div>
@@ -19,34 +22,24 @@
 
 <main class="container">
 
-  <!-- AUTH -->
-  <section id="authCard">
-    <h2>Login / Register</h2>
-    <input id="email" placeholder="Email" />
-    <input id="password" type="password" placeholder="Password" />
-    <button id="btnLogin">Login</button>
-    <button id="btnRegister">Register</button>
-    <div id="authMsg"></div>
-  </section>
-
-  <!-- PROFILE -->
+  <!-- PROFILE (only shown if user doesn't have username yet) -->
   <section id="profileCard" class="hidden">
     <h2>Create profile</h2>
-    <input id="profileUsername" placeholder="Username" />
-    <input id="profilePhotoUrl" placeholder="Avatar URL (optional)" />
+    <input id="profileUsername" placeholder="Username (letters/numbers/._-)" />
+    <input id="profilePhotoUrl" placeholder="Profile picture URL (optional https://...)" />
     <button id="btnSaveProfile">Save profile</button>
-    <div id="profileMsg"></div>
+    <div id="profileMsg" class="muted"></div>
   </section>
 
-  <!-- POST -->
+  <!-- COMPOSER -->
   <section id="composerCard" class="hidden">
     <h2>New post</h2>
     <input id="postTitle" placeholder="Title" />
     <textarea id="postBody" placeholder="Text"></textarea>
-    <input id="imageUrl" placeholder="Image URL (optional)" />
-    <input id="videoUrl" placeholder="Video URL (optional)" />
+    <input id="imageUrl" placeholder="Image URL (optional https://...)" />
+    <input id="videoUrl" placeholder="Video URL (optional https://...)" />
     <button id="btnPublish">Publish</button>
-    <div id="publishMsg"></div>
+    <div id="publishMsg" class="muted"></div>
   </section>
 
   <!-- FEED -->
@@ -56,6 +49,7 @@
   </section>
 
 </main>
+
 <!-- Reply dialog -->
 <dialog id="replyDialog">
   <form method="dialog" class="dialogBox">
@@ -69,47 +63,20 @@
   </form>
 </dialog>
 
-<!-- 🔥 GUARANTEED LOADER -->
-  
 <script type="module">
-  // Visible badge so you know this HTML is live
-  document.body.insertAdjacentHTML(
-    "beforeend",
-    '<div style="position:fixed;bottom:8px;right:8px;background:black;color:#0f0;padding:6px;font:12px monospace;z-index:9999">index.html LIVE</div>'
-  );
-
-  function shouldCrashRedirect(reason) {
-    const msg = String(reason?.code || reason?.message || reason || "");
-
-    // Ignore browser extensions noise
-    if (msg.includes("chrome-extension://")) return false;
-
-    // Ignore expected Firebase auth errors (we show these in UI now)
-    if (msg.includes("auth/unauthorized-domain")) return false;
-    if (msg.includes("auth/operation-not-allowed")) return false;
-    if (msg.includes("auth/invalid-email")) return false;
-    if (msg.includes("auth/wrong-password")) return false;
-    if (msg.includes("auth/user-not-found")) return false;
-    if (msg.includes("auth/email-already-in-use")) return false;
-    if (msg.includes("auth/weak-password")) return false;
-
+  // Crash fallback only for real crashes
+  const shouldRedirect = (reason) => {
+    const m = String(reason?.code || reason?.message || reason || "");
+    if (m.includes("auth/")) return false;          // auth errors handled in UI / redirect to login
+    if (m.includes("chrome-extension://")) return false;
     return true;
-  }
+  };
+  window.addEventListener("error", (e) => { if (shouldRedirect(e?.error || e?.message)) location.href = "uhoh.html"; });
+  window.addEventListener("unhandledrejection", (e) => { if (shouldRedirect(e?.reason)) location.href = "uhoh.html"; });
 
-  window.addEventListener("error", (e) => {
-    if (!shouldCrashRedirect(e?.error || e?.message)) return;
-    location.href = "uhoh.html";
-  });
-
-  window.addEventListener("unhandledrejection", (e) => {
-    if (!shouldCrashRedirect(e?.reason)) return;
-    location.href = "uhoh.html";
-  });
-
-  import "./app_v3.js?v=2";
+  import "./app.js?v=1";
 </script>
-
-
 </body>
 </html>
+
 
