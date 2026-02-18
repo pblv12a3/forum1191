@@ -286,14 +286,41 @@ async function loadReplies(postId) {
 async function loadPosts() {
   postsEl.innerHTML = "";
 
-  const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
-  const snap = await getDocs(q);
+  // Try the "new" query first (new posts have createdAt)
+  let docs = [];
+  try {
+    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
+    const snapNew = await getDocs(qNew);
+    docs = snapNew.docs;
+  } catch (e) {
+    // If orderBy fails due to missing createdAt on older docs, fall back:
+    console.warn("Falling back to unordered posts fetch:", e);
+    const snapAny = await getDocs(collection(db, "posts"));
+    docs = snapAny.docs;
+  }
 
-  for (const d of snap.docs) {
+  // Client-side sort: createdAt desc if present
+  docs.sort((a, b) => {
+    const ta = a.data().createdAt?.toMillis?.() || 0;
+    const tb = b.data().createdAt?.toMillis?.() || 0;
+    return tb - ta;
+  });
+
+  for (const d of docs.slice(0, 50)) {
     const p = d.data();
     const postId = d.id;
 
-    const avatar = p.authorPhotoUrl || defaultPersonAvatar(p.authorUsername || "user");
+    // Backward-compatible author display:
+    // - prefer authorUsername saved on post
+    // - else use legacy "author" (email)
+    // - else show "Anonymous"
+    const displayName = p.authorUsername || p.author || "Anonymous";
+
+    // Backward-compatible avatar:
+    const avatar =
+      p.authorPhotoUrl ||
+      defaultPersonAvatar(displayName);
+
     const myVote = await getMyVote(postId);
     const replies = await loadReplies(postId);
 
@@ -304,7 +331,7 @@ async function loadPosts() {
         <img class="avatar2014" src="${avatar}" alt="pfp" />
         <div>
           <div class="postTitle">${(p.title || "").replaceAll("<","&lt;")}</div>
-          <div class="postMeta">by <b>${(p.authorUsername || "Anonymous").replaceAll("<","&lt;")}</b></div>
+          <div class="postMeta">by <b>${String(displayName).replaceAll("<","&lt;")}</b></div>
         </div>
       </div>
 
@@ -337,6 +364,38 @@ async function loadPosts() {
     postsEl.appendChild(div);
   }
 }
+
+    div.className = "post2014";
+    div.innerHTML = `
+      <div class="postHead">
+        <img class="avatar2014" src="${avatar}" alt="pfp" />
+        <div>
+          <div class="postTitle">${(p.title || "").replaceAll("<","&lt;")}</div>
+          <div class="postMeta">by <b>${(p.authorUsername || "Anonymous").replaceAll("<","&lt;")}</b></div>
+        </div>
+      </div>
+
+      <div class="postBody">${(p.body || "").replaceAll("<","&lt;").replaceAll("\n","<br>")}</div>
+
+      <div class="pills">
+        <button class="pill ${myVote === 1 ? "" : "off"}" data-like="1">👍 Like (${p.likeCount || 0})</button>
+        <button class="pill ${myVote === -1 ? "" : "off"}" data-like="-1">👎 Dislike (${p.dislikeCount || 0})</button>
+        <button class="pill off" data-reply="1">💬 Reply</button>
+      </div>
+
+      <div class="replyBox">
+        <div class="postMeta"><b>Replies</b></div>
+        ${replies.length ? replies.map(r => `
+          <div class="replyItem">
+            <div class="replyMeta">
+              <img src="${r.authorPhotoUrl || defaultPersonAvatar(r.authorUsername || "user")}" />
+              <span><b>${(r.authorUsername || "Anonymous").replaceAll("<","&lt;")}</b></span>
+            </div>
+            <div>${(r.text || "").replaceAll("<","&lt;").replaceAll("\n","<br>")}</div>
+          </div>
+        `).join("") : `<div class="muted">No replies yet.</div>`}
+      </div>
+    `;
 
 // -------- Auth state --------
 onAuthStateChanged(auth, async (user) => {
