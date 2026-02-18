@@ -56,8 +56,21 @@
   </section>
 
 </main>
+<!-- Reply dialog -->
+<dialog id="replyDialog">
+  <form method="dialog" class="dialogBox">
+    <h3 id="replyToTitle">Reply</h3>
+    <textarea id="replyText" placeholder="Write your reply..."></textarea>
+    <div class="row">
+      <button id="btnSendReply" type="button">Send reply</button>
+      <button type="submit">Close</button>
+    </div>
+    <div id="replyMsg" class="muted"></div>
+  </form>
+</dialog>
 
 <!-- 🔥 GUARANTEED LOADER -->
+  
 <script type="module">
   // Visible badge so you know this HTML is live
   document.body.insertAdjacentHTML(
