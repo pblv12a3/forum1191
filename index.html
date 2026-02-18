@@ -21,6 +21,22 @@
 </header>
 
 <main class="container">
+  <section id="settingsCard" class="hidden">
+  <h2>Settings</h2>
+
+  <div class="row">
+    <button id="btnCloseSettings">Close</button>
+  </div>
+
+  <input id="settingsUsername" placeholder="New username" />
+  <input id="settingsPhotoUrl" placeholder="New profile picture URL (optional)" />
+  <button id="btnSaveSettings">Save</button>
+
+  <div id="settingsMsg" class="muted"></div>
+</section>
+
+<button id="btnOpenSettings" class="hidden" style="margin:0 0 12px 0;">Open Settings</button>
+
 
   <!-- PROFILE (only shown if user doesn't have username yet) -->
   <section id="profileCard" class="hidden">
