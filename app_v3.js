@@ -31,6 +31,7 @@ const btnSaveProfile = $("btnSaveProfile");
 const profileMsg = $("profileMsg");
 
 const composerCard = $("composerCard");
+const postCategory = $("postCategory");
 const postTitle = $("postTitle");
 const postBody = $("postBody");
 const imageUrl = $("imageUrl");
@@ -39,6 +40,7 @@ const btnPublish = $("btnPublish");
 const publishMsg = $("publishMsg");
 
 const feed = $("feed");
+const categoryFilter = $("categoryFilter");
 const postsEl = $("posts");
 
 const replyDialog = $("replyDialog");
@@ -48,6 +50,12 @@ const btnSendReply = $("btnSendReply");
 const replyMsg = $("replyMsg");
 
 let replyingToPostId = null;
+let currentCategory = "all";
+
+categoryFilter?.addEventListener("change", () => {
+  currentCategory = categoryFilter.value || "all";
+  loadPosts();
+});
 
 function defaultPersonAvatar(seed) {
   const s = encodeURIComponent(seed || "anonymous");
@@ -164,6 +172,7 @@ btnPublish?.addEventListener("click", async () => {
     if (!title || !body) throw new Error("Title and text are required.");
 
     await addDoc(collection(db, "posts"), {
+      category: (postCategory?.value || "fr/general"),
       title,
       body,
       imageUrl: normalizeUrl(imageUrl?.value || "") || null,
@@ -180,6 +189,7 @@ btnPublish?.addEventListener("click", async () => {
     if (postBody) postBody.value = "";
     if (imageUrl) imageUrl.value = "";
     if (videoUrl) videoUrl.value = "";
+    if (postCategory) postCategory.value = "fr/general";
 
     msg(publishMsg, "Posted!");
     await loadPosts();
@@ -276,7 +286,7 @@ async function loadReplies(postId) {
   return out;
 }
 
-// backward-compatible load
+// backward-compatible load + filter by category
 async function loadPosts() {
   if (!postsEl) return;
   postsEl.innerHTML = "";
@@ -284,7 +294,7 @@ async function loadPosts() {
 
   let docs = [];
   try {
-    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(50));
+    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(80));
     const snapNew = await getDocs(qNew);
     docs = snapNew.docs;
   } catch (e) {
@@ -298,9 +308,16 @@ async function loadPosts() {
     return tb - ta;
   });
 
-  for (const d of docs.slice(0, 50)) {
+  let rendered = 0;
+
+  for (const d of docs) {
+    if (rendered >= 80) break;
+
     const p = d.data();
     const postId = d.id;
+
+    const cat = p.category || "fr/general";
+    if (currentCategory !== "all" && cat !== currentCategory) continue;
 
     const displayName = p.authorUsername || p.author || "Anonymous";
     const avatar = p.authorPhotoUrl || defaultPersonAvatar(displayName);
@@ -314,7 +331,10 @@ async function loadPosts() {
       <div class="postHead">
         <img class="avatar2014" src="${avatar}" alt="pfp" />
         <div>
-          <div class="postTitle">${(p.title || "").replaceAll("<","&lt;")}</div>
+          <div class="postTitle">
+            ${(p.title || "").replaceAll("<","&lt;")}
+            <span class="tagCat">${String(cat).replaceAll("<","&lt;")}</span>
+          </div>
           <div class="postMeta">by <b>${String(displayName).replaceAll("<","&lt;")}</b></div>
         </div>
       </div>
@@ -346,6 +366,7 @@ async function loadPosts() {
     div.querySelector('[data-reply="1"]').addEventListener("click", () => openReply(postId, p.title));
 
     postsEl.appendChild(div);
+    rendered++;
   }
 
   setLoading(false);
@@ -358,18 +379,15 @@ async function refreshUI(user) {
 
   if (btnLogout) btnLogout.classList.remove("hidden");
 
-  // show username in top bar
-  if (userLabel) userLabel.textContent = hasProfile ? prof.username : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
+  if (userLabel) userLabel.textContent =
+    hasProfile ? prof.username : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
 
-  // show settings only if profile exists
   if (btnOpenSettings) btnOpenSettings.classList.toggle("hidden", !hasProfile);
 
-  // show profile card only if missing profile
   show(profileCard, !hasProfile);
   show(composerCard, hasProfile);
   show(feed, hasProfile);
 
-  // if profile exists, load posts
   if (hasProfile) await loadPosts();
 }
 
