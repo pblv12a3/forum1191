@@ -40,7 +40,7 @@
     <div id="settingsMsg" class="muted"></div>
   </section>
 
-  <!-- PROFILE (shown if user has no profile yet) -->
+  <!-- PROFILE -->
   <section id="profileCard">
     <h2>Create profile</h2>
     <input id="profileUsername" placeholder="Username (letters/numbers/._-)" />
@@ -52,6 +52,18 @@
   <!-- POST -->
   <section id="composerCard">
     <h2>New post</h2>
+
+    <select id="postCategory">
+      <option value="fr/nostupidquestions">fr/nostupidquestions</option>
+      <option value="fr/stupidquestions">fr/stupidquestions</option>
+      <option value="fr/general" selected>fr/general</option>
+      <option value="fr/advice">fr/advice</option>
+      <option value="fr/dumbkids">fr/dumbkids</option>
+      <option value="fr/emo's">fr/emo's</option>
+      <option value="fr/tech">fr/tech</option>
+      <option value="fr/coding">fr/coding</option>
+    </select>
+
     <input id="postTitle" placeholder="Title" />
     <textarea id="postBody" placeholder="Text"></textarea>
     <input id="imageUrl" placeholder="Image URL (optional https://...)" />
@@ -63,6 +75,22 @@
   <!-- FEED -->
   <section id="feed">
     <h2>Posts</h2>
+
+    <div class="row" style="margin:10px 12px;">
+      <b style="font-size:12px;color:#607286;">Category:</b>
+      <select id="categoryFilter" style="max-width:320px;">
+        <option value="all" selected>All</option>
+        <option value="fr/nostupidquestions">fr/nostupidquestions</option>
+        <option value="fr/stupidquestions">fr/stupidquestions</option>
+        <option value="fr/general">fr/general</option>
+        <option value="fr/advice">fr/advice</option>
+        <option value="fr/dumbkids">fr/dumbkids</option>
+        <option value="fr/emo's">fr/emo's</option>
+        <option value="fr/tech">fr/tech</option>
+        <option value="fr/coding">fr/coding</option>
+      </select>
+    </div>
+
     <div id="posts"></div>
   </section>
 
@@ -82,13 +110,13 @@
 </dialog>
 
 <script type="module">
-  // Visible badge proves JS is running
+  // Badge proves JS is running
   document.body.insertAdjacentHTML(
     "beforeend",
     '<div style="position:fixed;bottom:8px;right:8px;background:#000;color:#0f0;padding:6px;font:12px monospace;z-index:99999">HOME JS LOADED</div>'
   );
 
-  // Only redirect to uhoh on real crashes (ignore extensions)
+  // only redirect to uhoh on real crashes
   const shouldRedirect = (reason) => {
     const m = String(reason?.code || reason?.message || reason || "");
     if (m.includes("chrome-extension://")) return false;
@@ -97,10 +125,11 @@
   window.addEventListener("error", (e) => { if (shouldRedirect(e?.error || e?.message)) location.href = "uhoh.html"; });
   window.addEventListener("unhandledrejection", (e) => { if (shouldRedirect(e?.reason)) location.href = "uhoh.html"; });
 
-  import "./app_v3.js?v=7";
+  import "./app_v3.js?v=8";
 </script>
 
 </body>
 </html>
+
 
 
