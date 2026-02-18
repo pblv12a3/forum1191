@@ -1,12 +1,5 @@
-// app_v3.js?v=5 — Homepage logic + Settings (edit username/pfp) + show username in topbar
-
 import { auth, db } from "./firebase.js";
-
-import {
-  onAuthStateChanged,
-  signOut
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   doc, getDoc, setDoc,
   collection, addDoc, getDocs,
@@ -18,22 +11,26 @@ const $ = (id) => document.getElementById(id);
 const show = (el, on) => el && el.classList.toggle("hidden", !on);
 const msg = (el, text) => el && (el.textContent = text || "");
 
+const loadingBanner = $("loadingBanner");
+
 const userLabel = $("userLabel");
 const btnLogout = $("btnLogout");
+const btnOpenSettings = $("btnOpenSettings");
 
-// cards
+const settingsCard = $("settingsCard");
+const btnCloseSettings = $("btnCloseSettings");
+const settingsUsername = $("settingsUsername");
+const settingsPhotoUrl = $("settingsPhotoUrl");
+const btnSaveSettings = $("btnSaveSettings");
+const settingsMsg = $("settingsMsg");
+
 const profileCard = $("profileCard");
-const composerCard = $("composerCard");
-const feed = $("feed");
-const postsEl = $("posts");
-
-// profile create (existing)
 const profileUsername = $("profileUsername");
 const profilePhotoUrl = $("profilePhotoUrl");
 const btnSaveProfile = $("btnSaveProfile");
 const profileMsg = $("profileMsg");
 
-// composer
+const composerCard = $("composerCard");
 const postTitle = $("postTitle");
 const postBody = $("postBody");
 const imageUrl = $("imageUrl");
@@ -41,21 +38,14 @@ const videoUrl = $("videoUrl");
 const btnPublish = $("btnPublish");
 const publishMsg = $("publishMsg");
 
-// reply dialog
+const feed = $("feed");
+const postsEl = $("posts");
+
 const replyDialog = $("replyDialog");
 const replyToTitle = $("replyToTitle");
 const replyText = $("replyText");
 const btnSendReply = $("btnSendReply");
 const replyMsg = $("replyMsg");
-
-// settings (NEW)
-const settingsCard = $("settingsCard");
-const btnOpenSettings = $("btnOpenSettings");
-const btnCloseSettings = $("btnCloseSettings");
-const settingsUsername = $("settingsUsername");
-const settingsPhotoUrl = $("settingsPhotoUrl");
-const btnSaveSettings = $("btnSaveSettings");
-const settingsMsg = $("settingsMsg");
 
 let replyingToPostId = null;
 
@@ -76,23 +66,31 @@ async function getMyProfile(uid) {
   return snap.exists() ? snap.data() : null;
 }
 
-// --- Settings open/close ---
+function setLoading(on, text = "Loading ForumsR…") {
+  if (!loadingBanner) return;
+  loadingBanner.style.display = on ? "" : "none";
+  loadingBanner.textContent = text;
+}
+
+// logout
+btnLogout?.addEventListener("click", async () => {
+  await signOut(auth);
+  location.href = "login.html";
+});
+
+// settings open/close
 btnOpenSettings?.addEventListener("click", async () => {
   const user = auth.currentUser;
   if (!user) return;
-
   const prof = await getMyProfile(user.uid);
   if (settingsUsername) settingsUsername.value = prof?.username || "";
   if (settingsPhotoUrl) settingsPhotoUrl.value = prof?.photoUrl || "";
   msg(settingsMsg, "");
   show(settingsCard, true);
 });
+btnCloseSettings?.addEventListener("click", () => show(settingsCard, false));
 
-btnCloseSettings?.addEventListener("click", () => {
-  show(settingsCard, false);
-});
-
-// --- Save profile (create) ---
+// save profile (first-time)
 btnSaveProfile?.addEventListener("click", async () => {
   try {
     msg(profileMsg, "");
@@ -113,7 +111,7 @@ btnSaveProfile?.addEventListener("click", async () => {
       updatedAt: serverTimestamp()
     }, { merge: true });
 
-    await refreshUIForUser(user);
+    await refreshUI(user);
     await loadPosts();
   } catch (e) {
     console.error(e);
@@ -121,7 +119,7 @@ btnSaveProfile?.addEventListener("click", async () => {
   }
 });
 
-// --- Save settings (edit username/pfp) ---
+// save settings (edit anytime)
 btnSaveSettings?.addEventListener("click", async () => {
   try {
     msg(settingsMsg, "");
@@ -143,7 +141,7 @@ btnSaveSettings?.addEventListener("click", async () => {
     }, { merge: true });
 
     msg(settingsMsg, "Saved!");
-    await refreshUIForUser(user);
+    await refreshUI(user);
     await loadPosts();
   } catch (e) {
     console.error(e);
@@ -151,13 +149,7 @@ btnSaveSettings?.addEventListener("click", async () => {
   }
 });
 
-// --- Logout ---
-btnLogout?.addEventListener("click", async () => {
-  await signOut(auth);
-  location.href = "login.html";
-});
-
-// --- Post ---
+// publish post
 btnPublish?.addEventListener("click", async () => {
   try {
     msg(publishMsg, "");
@@ -197,7 +189,7 @@ btnPublish?.addEventListener("click", async () => {
   }
 });
 
-// --- Votes ---
+// votes: posts/{postId}/votes/{uid} = { value: 1|-1|0 }
 async function getMyVote(postId) {
   const user = auth.currentUser;
   if (!user) return 0;
@@ -239,7 +231,7 @@ async function vote(postId, value) {
   await loadPosts();
 }
 
-// --- Replies ---
+// replies
 function openReply(postId, title) {
   replyingToPostId = postId;
   if (replyToTitle) replyToTitle.textContent = `Reply to: ${title || "Post"}`;
@@ -284,9 +276,11 @@ async function loadReplies(postId) {
   return out;
 }
 
-// --- Backward compatible feed load ---
+// backward-compatible load
 async function loadPosts() {
+  if (!postsEl) return;
   postsEl.innerHTML = "";
+  setLoading(true, "Loading posts…");
 
   let docs = [];
   try {
@@ -294,7 +288,6 @@ async function loadPosts() {
     const snapNew = await getDocs(qNew);
     docs = snapNew.docs;
   } catch (e) {
-    console.warn("Fallback fetch:", e);
     const snapAny = await getDocs(collection(db, "posts"));
     docs = snapAny.docs;
   }
@@ -331,8 +324,7 @@ async function loadPosts() {
       <div class="pills">
         <button class="pill ${myVote === 1 ? "" : "off"}" data-like="1">👍 Like (${p.likeCount || 0})</button>
         <button class="pill ${myVote === -1 ? "" : "off"}" data-like="-1">👎 Dislike (${p.dislikeCount || 0})</button>
-        <button class="pill off" data-reply="1">⚑ Settings</button>
-        <button class="pill off" data-replypost="1">💬 Reply</button>
+        <button class="pill off" data-reply="1">💬 Reply</button>
       </div>
 
       <div class="replyBox">
@@ -351,42 +343,41 @@ async function loadPosts() {
 
     div.querySelector('[data-like="1"]').addEventListener("click", () => vote(postId, 1));
     div.querySelector('[data-like="-1"]').addEventListener("click", () => vote(postId, -1));
-    div.querySelector('[data-replypost="1"]').addEventListener("click", () => openReply(postId, p.title));
-    // settings button opens settings panel
-    div.querySelector('[data-reply="1"]').addEventListener("click", () => btnOpenSettings?.click());
+    div.querySelector('[data-reply="1"]').addEventListener("click", () => openReply(postId, p.title));
 
     postsEl.appendChild(div);
   }
+
+  setLoading(false);
 }
 
-// --- UI refresh for user (show username in topbar) ---
-async function refreshUIForUser(user) {
+// show username instead of email in header
+async function refreshUI(user) {
   const prof = await getMyProfile(user.uid);
-  const hasProfile = !!(prof && prof.username);
+  const hasProfile = !!prof?.username;
 
-  // Display username instead of email
+  if (btnLogout) btnLogout.classList.remove("hidden");
+
+  // show username in top bar
   if (userLabel) userLabel.textContent = hasProfile ? prof.username : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
 
+  // show settings only if profile exists
+  if (btnOpenSettings) btnOpenSettings.classList.toggle("hidden", !hasProfile);
+
+  // show profile card only if missing profile
   show(profileCard, !hasProfile);
   show(composerCard, hasProfile);
   show(feed, hasProfile);
 
-  // settings button only if profile exists
-  if (btnOpenSettings) btnOpenSettings.classList.toggle("hidden", !hasProfile);
+  // if profile exists, load posts
+  if (hasProfile) await loadPosts();
 }
 
-// --- Require login ---
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = "login.html";
     return;
   }
-  btnLogout?.classList.remove("hidden");
-  await refreshUIForUser(user);
-
-  const prof = await getMyProfile(user.uid);
-  if (prof?.username) await loadPosts();
+  await refreshUI(user);
 });
 
-// expose for internal call safety
-window.loadPosts = loadPosts;
