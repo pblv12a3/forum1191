@@ -219,5 +219,32 @@ button:active { transform: translateY(1px); }
   border-radius:4px;
   background:#fff;
 }
+/* Category + select styling */
+select{
+  width: calc(100% - 26px);
+  padding: 7px 8px;
+  border: 1px solid #9fb3c8;
+  border-radius: 3px;
+  background: #fbfdff;
+  font-size: 13px;
+  outline: none;
+}
+select:focus{
+  border-color: #2b6fb6;
+  box-shadow: 0 0 0 2px rgba(43,111,182,.15);
+}
+
+.tagCat{
+  display:inline-block;
+  font-size:11px;
+  padding:2px 6px;
+  border:1px solid #c9d7e7;
+  background: linear-gradient(#f8fbff, #e8f0fa);
+  color:#1f5690;
+  border-radius:3px;
+  margin-left:6px;
+  vertical-align: middle;
+}
+
 dialog::backdrop{ background: rgba(0,0,0,.35); }
 
