@@ -50,22 +50,55 @@ const btnSendReply = $("btnSendReply");
 const replyMsg = $("replyMsg");
 
 let replyingToPostId = null;
-let currentCategory = "all";
 
-// Read category from URL: index.html?c=fr/tech
+/* ---------------- URL helpers: category + post ---------------- */
+
 function readCategoryFromUrl() {
   const params = new URLSearchParams(location.search);
   const c = params.get("c");
   return c && c.trim() ? c.trim() : null;
 }
-
-// Update URL when user changes filter
 function setCategoryInUrl(cat) {
   const url = new URL(location.href);
   if (!cat || cat === "all") url.searchParams.delete("c");
   else url.searchParams.set("c", cat);
   history.replaceState({}, "", url.toString());
 }
+
+function readPostFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const p = params.get("p");
+  return p && p.trim() ? p.trim() : null;
+}
+function setPostInUrl(postId) {
+  const url = new URL(location.href);
+  if (!postId) url.searchParams.delete("p");
+  else url.searchParams.set("p", postId);
+  history.replaceState({}, "", url.toString());
+}
+
+let currentCategory = "all";
+let currentPostId = readPostFromUrl();
+
+// init category from URL if present
+const urlCat = readCategoryFromUrl();
+if (urlCat && categoryFilter) {
+  const optExists = Array.from(categoryFilter.options).some(o => o.value === urlCat);
+  if (optExists) categoryFilter.value = urlCat;
+  currentCategory = optExists ? urlCat : "all";
+}
+
+// update category when dropdown changes
+categoryFilter?.addEventListener("change", () => {
+  currentCategory = categoryFilter.value || "all";
+  setCategoryInUrl(currentCategory);
+  // leaving post view when switching category
+  currentPostId = null;
+  setPostInUrl(null);
+  loadPosts();
+});
+
+/* ---------------- utility ---------------- */
 
 function defaultPersonAvatar(seed) {
   const s = encodeURIComponent(seed || "anonymous");
@@ -90,7 +123,8 @@ function setLoading(on, text = "Loading ForumsR…") {
   loadingBanner.textContent = text;
 }
 
-// logout
+/* ---------------- auth UI ---------------- */
+
 btnLogout?.addEventListener("click", async () => {
   await signOut(auth);
   location.href = "login.html";
@@ -108,7 +142,7 @@ btnOpenSettings?.addEventListener("click", async () => {
 });
 btnCloseSettings?.addEventListener("click", () => show(settingsCard, false));
 
-// save profile (first-time)
+// save profile (first time)
 btnSaveProfile?.addEventListener("click", async () => {
   try {
     msg(profileMsg, "");
@@ -167,7 +201,8 @@ btnSaveSettings?.addEventListener("click", async () => {
   }
 });
 
-// publish post
+/* ---------------- posting ---------------- */
+
 btnPublish?.addEventListener("click", async () => {
   try {
     msg(publishMsg, "");
@@ -202,6 +237,9 @@ btnPublish?.addEventListener("click", async () => {
     if (postCategory) postCategory.value = "fr/general";
 
     msg(publishMsg, "Posted!");
+    // after posting, exit single-post view
+    currentPostId = null;
+    setPostInUrl(null);
     await loadPosts();
   } catch (e) {
     console.error(e);
@@ -209,7 +247,9 @@ btnPublish?.addEventListener("click", async () => {
   }
 });
 
-// votes: posts/{postId}/votes/{uid} = { value: 1|-1|0 }
+/* ---------------- votes ---------------- */
+
+// posts/{postId}/votes/{uid} = { value: 1|-1|0 }
 async function getMyVote(postId) {
   const user = auth.currentUser;
   if (!user) return 0;
@@ -251,7 +291,8 @@ async function vote(postId, value) {
   await loadPosts();
 }
 
-// replies
+/* ---------------- replies ---------------- */
+
 function openReply(postId, title) {
   replyingToPostId = postId;
   if (replyToTitle) replyToTitle.textContent = `Reply to: ${title || "Post"}`;
@@ -296,15 +337,18 @@ async function loadReplies(postId) {
   return out;
 }
 
-// backward-compatible load + filter by category
+/* ---------------- feed load: category + single post ---------------- */
+
 async function loadPosts() {
   if (!postsEl) return;
   postsEl.innerHTML = "";
   setLoading(true, "Loading posts…");
 
+  const singlePostMode = !!currentPostId;
+
   let docs = [];
   try {
-    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(80));
+    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(120));
     const snapNew = await getDocs(qNew);
     docs = snapNew.docs;
   } catch (e) {
@@ -321,19 +365,25 @@ async function loadPosts() {
   let rendered = 0;
 
   for (const d of docs) {
-    if (rendered >= 80) break;
+    if (rendered >= 120) break;
 
     const p = d.data();
     const postId = d.id;
 
     const cat = p.category || "fr/general";
-    if (currentCategory !== "all" && cat !== currentCategory) continue;
+
+    if (!singlePostMode && currentCategory !== "all" && cat !== currentCategory) continue;
+    if (singlePostMode && postId !== currentPostId) continue;
 
     const displayName = p.authorUsername || p.author || "Anonymous";
     const avatar = p.authorPhotoUrl || defaultPersonAvatar(displayName);
 
     const myVote = await getMyVote(postId);
     const replies = await loadReplies(postId);
+
+    const safeCat = String(cat).replaceAll("<", "&lt;");
+    const safeTitle = (p.title || "").replaceAll("<", "&lt;");
+    const safeBody = (p.body || "").replaceAll("<", "&lt;").replaceAll("\n", "<br>");
 
     const div = document.createElement("div");
     div.className = "post2014";
@@ -342,19 +392,24 @@ async function loadPosts() {
         <img class="avatar2014" src="${avatar}" alt="pfp" />
         <div>
           <div class="postTitle">
-            ${(p.title || "").replaceAll("<","&lt;")}
-            <span class="tagCat">${String(cat).replaceAll("<","&lt;")}</span>
+            <a class="postLink" href="index.html?p=${postId}">${safeTitle}</a>
+            <a class="tagCat" href="index.html?c=${encodeURIComponent(String(cat))}">${safeCat}</a>
           </div>
-          <div class="postMeta">by <b>${String(displayName).replaceAll("<","&lt;")}</b></div>
+          <div class="postMeta">
+            by <b>${String(displayName).replaceAll("<","&lt;")}</b>
+            ${singlePostMode ? `<span class="muted"> • Post ID: ${postId}</span>` : ""}
+          </div>
         </div>
       </div>
 
-      <div class="postBody">${(p.body || "").replaceAll("<","&lt;").replaceAll("\n","<br>")}</div>
+      <div class="postBody">${safeBody}</div>
 
       <div class="pills">
         <button class="pill ${myVote === 1 ? "" : "off"}" data-like="1">👍 Like (${p.likeCount || 0})</button>
         <button class="pill ${myVote === -1 ? "" : "off"}" data-like="-1">👎 Dislike (${p.dislikeCount || 0})</button>
         <button class="pill off" data-reply="1">💬 Reply</button>
+        <button class="pill off" data-copy="1">🔗 Link</button>
+        ${singlePostMode ? `<button class="pill off" data-back="1">⬅ Back</button>` : ""}
       </div>
 
       <div class="replyBox">
@@ -375,22 +430,49 @@ async function loadPosts() {
     div.querySelector('[data-like="-1"]').addEventListener("click", () => vote(postId, -1));
     div.querySelector('[data-reply="1"]').addEventListener("click", () => openReply(postId, p.title));
 
+    // copy link button
+    div.querySelector('[data-copy="1"]').addEventListener("click", async () => {
+      const link = `${location.origin}${location.pathname}?p=${postId}`;
+      try {
+        await navigator.clipboard.writeText(link);
+        alert("Post link copied!");
+      } catch {
+        prompt("Copy post link:", link);
+      }
+    });
+
+    // back button (single post mode)
+    const backBtn = div.querySelector('[data-back="1"]');
+    if (backBtn) {
+      backBtn.addEventListener("click", () => {
+        currentPostId = null;
+        setPostInUrl(null);
+        loadPosts();
+      });
+    }
+
     postsEl.appendChild(div);
     rendered++;
+
+    if (singlePostMode) break; // stop after rendering the single post
   }
 
   setLoading(false);
 }
 
-// show username instead of email in header
+/* ---------------- show username in header + gate UI ---------------- */
+
 async function refreshUI(user) {
   const prof = await getMyProfile(user.uid);
   const hasProfile = !!prof?.username;
 
   if (btnLogout) btnLogout.classList.remove("hidden");
 
-  if (userLabel) userLabel.textContent =
-    hasProfile ? prof.username : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
+  if (userLabel) {
+    userLabel.textContent = hasProfile
+      ? prof.username
+      : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
+  }
 
   if (btnOpenSettings) btnOpenSettings.classList.toggle("hidden", !hasProfile);
 
