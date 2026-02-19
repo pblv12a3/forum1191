@@ -52,10 +52,20 @@ const replyMsg = $("replyMsg");
 let replyingToPostId = null;
 let currentCategory = "all";
 
-categoryFilter?.addEventListener("change", () => {
-  currentCategory = categoryFilter.value || "all";
-  loadPosts();
-});
+// Read category from URL: index.html?c=fr/tech
+function readCategoryFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const c = params.get("c");
+  return c && c.trim() ? c.trim() : null;
+}
+
+// Update URL when user changes filter
+function setCategoryInUrl(cat) {
+  const url = new URL(location.href);
+  if (!cat || cat === "all") url.searchParams.delete("c");
+  else url.searchParams.set("c", cat);
+  history.replaceState({}, "", url.toString());
+}
 
 function defaultPersonAvatar(seed) {
   const s = encodeURIComponent(seed || "anonymous");
