@@ -51,52 +51,125 @@ const replyMsg = $("replyMsg");
 
 let replyingToPostId = null;
 
-/* ---------------- URL helpers: category + post ---------------- */
+/* ---------------- URL state (category + post) ---------------- */
 
 function readCategoryFromUrl() {
   const params = new URLSearchParams(location.search);
   const c = params.get("c");
   return c && c.trim() ? c.trim() : null;
 }
-function setCategoryInUrl(cat) {
-  const url = new URL(location.href);
-  if (!cat || cat === "all") url.searchParams.delete("c");
-  else url.searchParams.set("c", cat);
-  history.replaceState({}, "", url.toString());
-}
-
 function readPostFromUrl() {
   const params = new URLSearchParams(location.search);
   const p = params.get("p");
   return p && p.trim() ? p.trim() : null;
 }
+function buildUrl({ c, p }) {
+  const url = new URL(location.href);
+  url.searchParams.delete("c");
+  url.searchParams.delete("p");
+  if (c && c !== "all") url.searchParams.set("c", c);
+  if (p) url.searchParams.set("p", p);
+  return `${url.pathname}${url.search}`;
+}
+function setCategoryInUrl(cat) {
+  const url = new URL(location.href);
+  if (!cat || cat === "all") url.searchParams.delete("c");
+  else url.searchParams.set("c", cat);
+  history.replaceState({}, "", `${url.pathname}${url.search}`);
+}
 function setPostInUrl(postId) {
   const url = new URL(location.href);
   if (!postId) url.searchParams.delete("p");
   else url.searchParams.set("p", postId);
-  history.replaceState({}, "", url.toString());
+  history.replaceState({}, "", `${url.pathname}${url.search}`);
 }
 
 let currentCategory = "all";
-let currentPostId = readPostFromUrl();
+let currentPostId = null;
 
-// init category from URL if present
-const urlCat = readCategoryFromUrl();
-if (urlCat && categoryFilter) {
-  const optExists = Array.from(categoryFilter.options).some(o => o.value === urlCat);
-  if (optExists) categoryFilter.value = urlCat;
-  currentCategory = optExists ? urlCat : "all";
+function syncStateFromUrl() {
+  const urlCat = readCategoryFromUrl();
+  const urlPost = readPostFromUrl();
+  currentPostId = urlPost || null;
+
+  if (urlCat && categoryFilter) {
+    const optExists = Array.from(categoryFilter.options).some(o => o.value === urlCat);
+    if (optExists) {
+      currentCategory = urlCat;
+      categoryFilter.value = urlCat;
+    } else {
+      currentCategory = "all";
+      categoryFilter.value = "all";
+    }
+  } else {
+    currentCategory = categoryFilter?.value || "all";
+  }
 }
 
-// update category when dropdown changes
+syncStateFromUrl();
+
+window.addEventListener("popstate", () => {
+  syncStateFromUrl();
+  loadPosts();
+});
+
 categoryFilter?.addEventListener("change", () => {
   currentCategory = categoryFilter.value || "all";
   setCategoryInUrl(currentCategory);
-  // leaving post view when switching category
+
   currentPostId = null;
   setPostInUrl(null);
+
   loadPosts();
 });
+
+/* ---------------- Verified + username uniqueness ---------------- */
+
+// Cache verified status to avoid extra reads
+const verifiedCache = new Map(); // uid -> boolean
+
+async function getVerifiedByUid(uid) {
+  if (!uid) return false;
+  if (verifiedCache.has(uid)) return verifiedCache.get(uid);
+
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    const v = !!(snap.exists() && snap.data()?.verified);
+    verifiedCache.set(uid, v);
+    return v;
+  } catch {
+    verifiedCache.set(uid, false);
+    return false;
+  }
+}
+
+function verifiedBadge(isVerified) {
+  return isVerified ? " ☑️" : "";
+}
+
+function normalizeUsername(name) {
+  return (name || "").trim();
+}
+function usernameKey(name) {
+  // case-insensitive + trim
+  return normalizeUsername(name).toLowerCase();
+}
+
+// Ensure usernames are unique using collection: usernames/{lowercaseUsername} -> { uid }
+async function ensureUsernameUnique(username, uid) {
+  const key = usernameKey(username);
+  if (!key) throw new Error("Username required.");
+
+  const ref = doc(db, "usernames", key);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const owner = snap.data()?.uid;
+    if (owner && owner !== uid) throw new Error("That username is taken. Choose another.");
+  }
+
+  // claim (or re-claim)
+  await setDoc(ref, { uid, username }, { merge: true });
+}
 
 /* ---------------- utility ---------------- */
 
@@ -149,7 +222,7 @@ btnSaveProfile?.addEventListener("click", async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const username = (profileUsername?.value || "").trim();
+    const username = normalizeUsername(profileUsername?.value || "");
     if (username.length < 3) throw new Error("Username must be at least 3 characters.");
     if (!/^[a-zA-Z0-9_.-]+$/.test(username)) throw new Error("Username can contain letters, numbers, _ . - only.");
 
@@ -157,9 +230,14 @@ btnSaveProfile?.addEventListener("click", async () => {
     const photoUrl = photoRaw ? normalizeUrl(photoRaw) : null;
     if (photoRaw && !photoUrl) throw new Error("Profile photo must be a valid http/https URL.");
 
+    // claim username (unique)
+    await ensureUsernameUnique(username, user.uid);
+
+    // create/update profile (verified defaults to false unless you set it true in DB)
     await setDoc(doc(db, "users", user.uid), {
       username,
       photoUrl: photoUrl || null,
+      verified: false,
       updatedAt: serverTimestamp()
     }, { merge: true });
 
@@ -178,13 +256,16 @@ btnSaveSettings?.addEventListener("click", async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const username = (settingsUsername?.value || "").trim();
+    const username = normalizeUsername(settingsUsername?.value || "");
     if (username.length < 3) throw new Error("Username must be at least 3 characters.");
     if (!/^[a-zA-Z0-9_.-]+$/.test(username)) throw new Error("Username can contain letters, numbers, _ . - only.");
 
     const photoRaw = (settingsPhotoUrl?.value || "").trim();
     const photoUrl = photoRaw ? normalizeUrl(photoRaw) : null;
     if (photoRaw && !photoUrl) throw new Error("Profile photo must be a valid http/https URL.");
+
+    // claim username (unique)
+    await ensureUsernameUnique(username, user.uid);
 
     await setDoc(doc(db, "users", user.uid), {
       username,
@@ -212,6 +293,8 @@ btnPublish?.addEventListener("click", async () => {
     const prof = await getMyProfile(user.uid);
     if (!prof?.username) throw new Error("Set your username first.");
 
+    const isVerified = !!prof?.verified;
+
     const title = (postTitle?.value || "").trim();
     const body = (postBody?.value || "").trim();
     if (!title || !body) throw new Error("Title and text are required.");
@@ -222,9 +305,12 @@ btnPublish?.addEventListener("click", async () => {
       body,
       imageUrl: normalizeUrl(imageUrl?.value || "") || null,
       videoUrl: normalizeUrl(videoUrl?.value || "") || null,
+
       authorUid: user.uid,
       authorUsername: prof.username,
       authorPhotoUrl: prof.photoUrl || null,
+      authorVerified: isVerified, // ✅ denormalized for fast display
+
       createdAt: serverTimestamp(),
       likeCount: 0,
       dislikeCount: 0
@@ -237,9 +323,10 @@ btnPublish?.addEventListener("click", async () => {
     if (postCategory) postCategory.value = "fr/general";
 
     msg(publishMsg, "Posted!");
-    // after posting, exit single-post view
+
     currentPostId = null;
     setPostInUrl(null);
+
     await loadPosts();
   } catch (e) {
     console.error(e);
@@ -249,7 +336,6 @@ btnPublish?.addEventListener("click", async () => {
 
 /* ---------------- votes ---------------- */
 
-// posts/{postId}/votes/{uid} = { value: 1|-1|0 }
 async function getMyVote(postId) {
   const user = auth.currentUser;
   if (!user) return 0;
@@ -318,6 +404,7 @@ btnSendReply?.addEventListener("click", async () => {
       authorUid: user.uid,
       authorUsername: prof.username,
       authorPhotoUrl: prof.photoUrl || null,
+      authorVerified: !!prof?.verified, // ✅ denormalized
       createdAt: serverTimestamp()
     });
 
@@ -333,7 +420,7 @@ async function loadReplies(postId) {
   const q = query(collection(db, "posts", postId, "replies"), orderBy("createdAt", "desc"), limit(5));
   const snap = await getDocs(q);
   const out = [];
-  snap.forEach(d => out.push(d.data()));
+  snap.forEach(d => out.push({ id: d.id, ...d.data() }));
   return out;
 }
 
@@ -341,6 +428,9 @@ async function loadReplies(postId) {
 
 async function loadPosts() {
   if (!postsEl) return;
+
+  syncStateFromUrl();
+
   postsEl.innerHTML = "";
   setLoading(true, "Loading posts…");
 
@@ -348,10 +438,10 @@ async function loadPosts() {
 
   let docs = [];
   try {
-    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(120));
+    const qNew = query(collection(db, "posts"), orderBy("createdAt", "desc"), limit(160));
     const snapNew = await getDocs(qNew);
     docs = snapNew.docs;
-  } catch (e) {
+  } catch {
     const snapAny = await getDocs(collection(db, "posts"));
     docs = snapAny.docs;
   }
@@ -365,11 +455,10 @@ async function loadPosts() {
   let rendered = 0;
 
   for (const d of docs) {
-    if (rendered >= 120) break;
+    if (rendered >= 160) break;
 
     const p = d.data();
     const postId = d.id;
-
     const cat = p.category || "fr/general";
 
     if (!singlePostMode && currentCategory !== "all" && cat !== currentCategory) continue;
@@ -378,12 +467,21 @@ async function loadPosts() {
     const displayName = p.authorUsername || p.author || "Anonymous";
     const avatar = p.authorPhotoUrl || defaultPersonAvatar(displayName);
 
+    // ✅ verified flag (fast if stored on post; fallback to user lookup for old posts)
+    let isVerified = !!p.authorVerified;
+    if (!("authorVerified" in p) && p.authorUid) {
+      isVerified = await getVerifiedByUid(p.authorUid);
+    }
+
     const myVote = await getMyVote(postId);
     const replies = await loadReplies(postId);
 
     const safeCat = String(cat).replaceAll("<", "&lt;");
     const safeTitle = (p.title || "").replaceAll("<", "&lt;");
     const safeBody = (p.body || "").replaceAll("<", "&lt;").replaceAll("\n", "<br>");
+
+    const postHref = buildUrl({ c: currentCategory !== "all" ? currentCategory : null, p: postId });
+    const catHref = buildUrl({ c: cat, p: null });
 
     const div = document.createElement("div");
     div.className = "post2014";
@@ -392,12 +490,11 @@ async function loadPosts() {
         <img class="avatar2014" src="${avatar}" alt="pfp" />
         <div>
           <div class="postTitle">
-            <a class="postLink" href="index.html?p=${postId}">${safeTitle}</a>
-            <a class="tagCat" href="index.html?c=${encodeURIComponent(String(cat))}">${safeCat}</a>
+            <a class="postLink" href="${postHref}">${safeTitle}</a>
+            <a class="tagCat" href="${catHref}">${safeCat}</a>
           </div>
           <div class="postMeta">
-            by <b>${String(displayName).replaceAll("<","&lt;")}</b>
-            ${singlePostMode ? `<span class="muted"> • Post ID: ${postId}</span>` : ""}
+            by <b>${String(displayName).replaceAll("<","&lt;")}${verifiedBadge(isVerified)}</b>
           </div>
         </div>
       </div>
@@ -414,15 +511,21 @@ async function loadPosts() {
 
       <div class="replyBox">
         <div class="postMeta"><b>Replies</b></div>
-        ${replies.length ? replies.map(r => `
-          <div class="replyItem">
-            <div class="replyMeta">
-              <img src="${r.authorPhotoUrl || defaultPersonAvatar(r.authorUsername || "user")}" />
-              <span><b>${(r.authorUsername || "Anonymous").replaceAll("<","&lt;")}</b></span>
+        ${replies.length ? replies.map(r => {
+          const rName = (r.authorUsername || "Anonymous").replaceAll("<","&lt;");
+          const rAvatar = r.authorPhotoUrl || defaultPersonAvatar(r.authorUsername || "user");
+          const rVerified = !!r.authorVerified;
+          const rText = (r.text || "").replaceAll("<","&lt;").replaceAll("\n","<br>");
+          return `
+            <div class="replyItem">
+              <div class="replyMeta">
+                <img src="${rAvatar}" />
+                <span><b>${rName}${verifiedBadge(rVerified)}</b></span>
+              </div>
+              <div>${rText}</div>
             </div>
-            <div>${(r.text || "").replaceAll("<","&lt;").replaceAll("\n","<br>")}</div>
-          </div>
-        `).join("") : `<div class="muted">No replies yet.</div>`}
+          `;
+        }).join("") : `<div class="muted">No replies yet.</div>`}
       </div>
     `;
 
@@ -430,18 +533,18 @@ async function loadPosts() {
     div.querySelector('[data-like="-1"]').addEventListener("click", () => vote(postId, -1));
     div.querySelector('[data-reply="1"]').addEventListener("click", () => openReply(postId, p.title));
 
-    // copy link button
+    // copy link
     div.querySelector('[data-copy="1"]').addEventListener("click", async () => {
-      const link = `${location.origin}${location.pathname}?p=${postId}`;
+      const share = `${location.origin}${location.pathname}?p=${postId}`;
       try {
-        await navigator.clipboard.writeText(link);
+        await navigator.clipboard.writeText(share);
         alert("Post link copied!");
       } catch {
-        prompt("Copy post link:", link);
+        prompt("Copy post link:", share);
       }
     });
 
-    // back button (single post mode)
+    // back button
     const backBtn = div.querySelector('[data-back="1"]');
     if (backBtn) {
       backBtn.addEventListener("click", () => {
@@ -454,7 +557,7 @@ async function loadPosts() {
     postsEl.appendChild(div);
     rendered++;
 
-    if (singlePostMode) break; // stop after rendering the single post
+    if (singlePostMode) break;
   }
 
   setLoading(false);
@@ -469,8 +572,9 @@ async function refreshUI(user) {
   if (btnLogout) btnLogout.classList.remove("hidden");
 
   if (userLabel) {
+    const badge = verifiedBadge(!!prof?.verified);
     userLabel.textContent = hasProfile
-      ? prof.username
+      ? `${prof.username}${badge}`
       : (user.isAnonymous ? "Anonymous user" : (user.email || "Phone user"));
   }
 
